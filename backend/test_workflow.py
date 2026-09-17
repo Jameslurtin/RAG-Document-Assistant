@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from backend import main, rag
+from backend import llm, main, rag
 
 
 def pdf_bytes(text=None):
@@ -85,7 +85,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotEqual(old_name, rag.collection.name)
         self.assertEqual(rag.collection.count(), 1)
         self.assertNotIn(old_name, [item.name for item in rag.client.list_collections()])
-        with patch.object(rag.ollama, 'chat', return_value={'message': {'content': 'SQLite.'}}) as chat:
+        with patch.object(llm.ollama, 'chat', return_value={'message': {'content': 'SQLite.'}}) as chat:
             response = self.client.post('/ask', json={'question': ' What database is used? '})
             self.assertEqual(response.status_code, 200, response.text)
             source = response.json()['sources'][0]
@@ -102,8 +102,42 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.upload(pdf_bytes('Replacement content.')).status_code, 500)
         self.assertEqual(rag.collection.name, active_name)
         self.assertEqual(len(list(Path(self.temp.name).glob('*.pdf'))), 2)
-        with patch.object(rag.ollama, 'chat', side_effect=ConnectionError('offline')):
+        with patch.object(llm.ollama, 'chat', side_effect=ConnectionError('offline')):
             self.assertEqual(self.client.post('/ask', json={'question': 'Database?'}).status_code, 503)
+
+    def test_openai_missing_key_api_error(self):
+        uploaded = self.upload(pdf_bytes('The database is SQLite.'))
+        self.assertEqual(uploaded.status_code, 200, uploaded.text)
+        with patch.dict(os.environ, {'LLM_PROVIDER': 'openai', 'OPENAI_API_KEY': ''}), patch.object(llm, 'OpenAI') as factory:
+            response = self.client.post('/ask', json={'question': 'What database? '})
+            self.assertEqual(response.status_code, 400, response.text)
+            self.assertEqual(response.json(), {'detail': 'OPENAI_API_KEY is required when LLM_PROVIDER=openai.'})
+            factory.assert_not_called()
+
+    def test_provider_neutral_service_errors(self):
+        request = main.httpx.Request('POST', 'https://api.openai.com/v1/responses')
+        errors = [
+            (main.GeminiAPIError(503, {'error': {'message': 'Private service diagnostic'}}), 502,
+             'The language model service could not generate an answer.'),
+            (main.APIConnectionError(request=request), 503, 'The language model service is unavailable.'),
+            (main.APIError('Private service diagnostic', request=request, body=None), 502,
+             'The language model service could not generate an answer.'),
+        ]
+        for error, status, detail in errors:
+            with self.subTest(status=status), patch.object(main, 'ask_rag', side_effect=error), patch.object(main.logger, 'exception') as log:
+                response = self.client.post('/ask', json={'question': 'A question'})
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(response.json(), {'detail': detail})
+                log.assert_not_called()
+
+    def test_gemini_missing_key_api_error(self):
+        uploaded = self.upload(pdf_bytes('The database is SQLite.'))
+        self.assertEqual(uploaded.status_code, 200, uploaded.text)
+        with patch.dict(os.environ, {'LLM_PROVIDER': 'gemini', 'GEMINI_API_KEY': ''}), patch.object(llm.genai, 'Client') as factory:
+            response = self.client.post('/ask', json={'question': 'What database?'})
+            self.assertEqual(response.status_code, 400, response.text)
+            self.assertEqual(response.json(), {'detail': 'GEMINI_API_KEY is required when LLM_PROVIDER=gemini.'})
+            factory.assert_not_called()
 
     @unittest.skipUnless(os.environ.get('RAG_LIVE_TESTS') == '1', 'Enable RAG_LIVE_TESTS for local Ollama')
     def test_live_pdf_workflow(self):

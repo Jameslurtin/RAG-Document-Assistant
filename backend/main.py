@@ -4,6 +4,8 @@ from uuid import uuid4
 
 import httpx
 import ollama
+from google.genai.errors import APIError as GeminiAPIError
+from openai import APIConnectionError, APIError
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
@@ -43,13 +45,13 @@ def ask_question(request: QuestionRequest):
         return ask_rag(request.question)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except (ConnectionError, httpx.RequestError) as exc:
+    except (ConnectionError, httpx.RequestError, APIConnectionError) as exc:
         raise HTTPException(
-            status_code=503, detail="Cannot reach Ollama. Start Ollama with llama3.2 available."
+            status_code=503, detail="The language model service is unavailable."
         ) from exc
-    except ollama.ResponseError as exc:
+    except (ollama.ResponseError, APIError, GeminiAPIError) as exc:
         raise HTTPException(
-            status_code=502, detail="Ollama could not generate an answer. Check that llama3.2 is installed."
+            status_code=502, detail="The language model service could not generate an answer."
         ) from exc
     except Exception as exc:
         logger.exception("Question processing failed")

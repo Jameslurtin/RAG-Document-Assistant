@@ -11,6 +11,8 @@ backend/documents/*.pdf
 
 .env
 .env.*
+**/.env
+**/.env.*
 
 *.pyc
 *.log

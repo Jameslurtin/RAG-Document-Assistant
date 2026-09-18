@@ -3,11 +3,10 @@ from threading import Lock
 from uuid import uuid4
 
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
 import chromadb
+from backend.embeddings import embed_texts, embed_query
 from backend.llm import generate_answer
 
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 client = chromadb.Client()
 collection = None
 index_lock = Lock()
@@ -62,8 +61,10 @@ def index_document(pdf_path, filename=None):
 
     # Keep replacement and retrieval from accessing different document versions.
     with index_lock:
-        embeddings = embedding_model.encode(chunks)
-        replacement = client.create_collection(name=f"document_{uuid4().hex}")
+        embeddings = embed_texts(chunks)
+        replacement = client.create_collection(
+            name=f"document_{uuid4().hex}", embedding_function=None
+        )
         try:
             batch_size = client.get_max_batch_size()
             for start in range(0, len(chunks), batch_size):
@@ -71,7 +72,7 @@ def index_document(pdf_path, filename=None):
                 replacement.add(
                     ids=[f"chunk_{i}" for i in range(start, end)],
                     documents=chunks[start:end],
-                    embeddings=embeddings[start:end].tolist(),
+                    embeddings=embeddings[start:end],
                     metadatas=metadatas[start:end],
                 )
             if collection is not None:
@@ -90,9 +91,9 @@ def ask_rag(question: str):
     with index_lock:
         if collection is None:
             raise ValueError("No document is indexed. Upload a PDF first.")
-        question_embedding = embedding_model.encode(question)
+        question_embedding = embed_query(question)
         results = collection.query(
-            query_embeddings=[question_embedding.tolist()],
+            query_embeddings=[question_embedding],
             n_results=min(4, collection.count()),
             include=["documents", "metadatas"],
         )

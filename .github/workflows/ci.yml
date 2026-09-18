@@ -28,6 +28,9 @@ jobs:
         run: |
           python -m compileall backend
 
+      - name: Test backend
+        run: python -m unittest backend.test_embeddings backend.test_workflow -v
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -45,6 +48,11 @@ jobs:
 
       - name: Build backend Docker image
         run: docker build -f backend/Dockerfile -t rag-backend .
+
+      - name: Verify production image
+        run: |
+          docker run --rm -e EMBEDDING_PROVIDER=gemini -e LLM_PROVIDER=gemini rag-backend python -c "import importlib.metadata as m; from pathlib import Path; installed = {d.metadata['Name'].lower().replace('_', '-') for d in m.distributions()}; forbidden = installed & {'torch', 'sentence-transformers', 'transformers'}; assert not forbidden, forbidden; assert not list(Path('/app').rglob('.env*')), 'Environment file copied into image'; from fastapi.testclient import TestClient; from backend.main import app; client = TestClient(app); assert client.get('/').status_code == 200; print('Production packages and Gemini startup verified')"
+          docker image inspect rag-backend --format='Image size: {{.Size}} bytes'
 
       - name: Build frontend Docker image
         run: docker build -f frontend/Dockerfile -t rag-frontend .

@@ -5,6 +5,7 @@ Set RAG_LIVE_TESTS=1 to also test the existing PDFs with local llama3.2.
 import io
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,7 +14,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from backend import llm, main, rag
+from backend import embeddings, llm, main, rag
 
 
 def pdf_bytes(text=None):
@@ -42,6 +43,12 @@ class WorkflowTests(unittest.TestCase):
         self.directory = patch.object(main, 'DOCUMENTS_DIR', Path(self.temp.name))
         self.directory.start()
         self.client = TestClient(main.app)
+        self.addCleanup(patch.stopall)
+        patch.dict(os.environ, {'LLM_PROVIDER': 'ollama'}).start()
+        if self._testMethodName != 'test_live_pdf_workflow':
+            # Exercise real Chroma and HTTP behavior without network/model downloads.
+            patch.object(rag, 'embed_texts', side_effect=lambda texts: [[1.0, 0.0] for _ in texts]).start()
+            patch.object(rag, 'embed_query', return_value=[1.0, 0.0]).start()
         self.clear_index()
 
     def clear_index(self):
@@ -74,6 +81,33 @@ class WorkflowTests(unittest.TestCase):
         })
         self.assertEqual(response.headers['access-control-allow-origin'], 'http://localhost:5173')
 
+    def test_gemini_workflow_and_exact_fallback(self):
+        fallback = "I don't know based on the document."
+        with patch.object(rag, 'embed_texts', embeddings.embed_texts), patch.object(
+            rag, 'embed_query', embeddings.embed_query
+        ), patch.object(embeddings, '_PROVIDER', 'gemini'), patch.dict(
+            os.environ, {'LLM_PROVIDER': 'gemini', 'GEMINI_API_KEY': 'test-key'}
+        ), patch.object(embeddings.genai, 'Client') as factory:
+            models = factory.return_value.__enter__.return_value.models
+            models.embed_content.side_effect = lambda **kw: SimpleNamespace(
+                embeddings=[SimpleNamespace(values=[1.0, 0.0]) for _ in kw['contents']]
+            )
+            models.generate_content.return_value.text = 'SQLite.'
+            upload = self.upload(pdf_bytes('The database is SQLite.'))
+            self.assertEqual(upload.status_code, 200, upload.text)
+            response = self.client.post('/ask', json={'question': 'Which database?'})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['answer'], 'SQLite.')
+            self.assertEqual(response.json()['sources'][0]['page'], 1)
+            self.assertIn('SQLite', response.json()['sources'][0]['text'])
+            self.assertEqual([call.kwargs['config'].task_type for call in models.embed_content.call_args_list],
+                             ['RETRIEVAL_DOCUMENT', 'RETRIEVAL_QUERY'])
+            models.generate_content.return_value.text = fallback
+            response = self.client.post('/ask', json={'question': 'Population of Neptune?'})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['answer'], fallback)
+            self.assertIn(fallback, models.generate_content.call_args.kwargs['config'].system_instruction)
+
     def test_replacement_sources_and_failed_upload(self):
         first = self.upload(pdf_bytes('The first document uses PostgreSQL.'), '../same.pdf')
         self.assertEqual(first.status_code, 200, first.text)
@@ -98,7 +132,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('PostgreSQL', prompt)
         active_name = rag.collection.name
         self.assertEqual(self.upload(pdf_bytes()).status_code, 422)
-        with patch.object(rag.embedding_model, 'encode', side_effect=RuntimeError('test failure')):
+        with patch.object(rag, 'embed_texts', side_effect=RuntimeError('test failure')):
             self.assertEqual(self.upload(pdf_bytes('Replacement content.')).status_code, 500)
         self.assertEqual(rag.collection.name, active_name)
         self.assertEqual(len(list(Path(self.temp.name).glob('*.pdf'))), 2)

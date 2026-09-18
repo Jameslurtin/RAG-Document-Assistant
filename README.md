@@ -49,7 +49,7 @@ from the project root.
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements-local.txt
 ollama pull llama3.2
 ```
 
@@ -66,6 +66,53 @@ Run FastAPI with one backend worker:
 ```
 
 Interactive API documentation: http://127.0.0.1:8000/docs.
+
+## Embedding providers and Render
+
+Embedding generation lives in `backend/embeddings.py`, independently of
+`LLM_PROVIDER`. `EMBEDDING_PROVIDER` defaults to `local`, using the original
+`all-MiniLM-L6-v2` model, loaded on the first embedding request. Install
+`backend/requirements-local.txt` for this mode.
+
+For Render, use the existing backend Dockerfile and set these environment
+variables in the service settings:
+
+```text
+EMBEDDING_PROVIDER=gemini
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+GEMINI_API_KEY=<your key>
+LLM_PROVIDER=gemini
+```
+
+Keep `GEMINI_MODEL` set to your chosen generation model. The default Docker
+build installs only `backend/requirements.txt`, excluding SentenceTransformers,
+Transformers, and PyTorch. It preserves Render's `PORT` handling. Docker Compose
+uses this same production image: set `EMBEDDING_PROVIDER=gemini` and supply
+`GEMINI_API_KEY` in `backend/.env` at runtime. For local SentenceTransformer
+embeddings, use the Python virtual environment with `requirements-local.txt`.
+Environment files are excluded from the Docker build context.
+
+Gemini embeds chunks in requests of at most 100 texts with `RETRIEVAL_DOCUMENT`
+and questions with `RETRIEVAL_QUERY`. PDF text and questions are sent to Google's
+API in this mode. See the [official embedding API](https://ai.google.dev/api/embeddings).
+Provider and embedding model settings are read once at process startup. Restart
+after changing them, then upload the PDF again: the in-memory Chroma index is
+cleared on restart, preventing vectors from different models being mixed.
+Failed embedding requests preserve the previous active document.
+
+For a non-Docker launch, export the variables in your shell or pass
+`--env-file backend/.env` to Uvicorn; Python does not load `.env` automatically.
+Docker Compose loads the existing `backend/.env` file.
+
+Run offline provider and workflow checks with:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest backend.test_embeddings backend.test_workflow -v
+```
+
+Removing the local model reduces startup memory, but Chroma and indexed document
+vectors still use RAM; a 512 MB deployment should be checked with representative
+PDFs. A live Gemini request requires a valid key and available API quota.
 
 ## Frontend setup
 
@@ -118,7 +165,7 @@ From the project root:
 ```
 
 The default tests cover validation, index replacement, sources, and errors with
-real embeddings/Chroma and mocked Ollama. Set `RAG_LIVE_TESTS=1` to enable the
+real Chroma with mocked embeddings and Ollama. Set `RAG_LIVE_TESTS=1` to enable the
 live backend test. It requires the two local PDFs named in
 `backend/test_workflow.py`; these PDFs are intentionally not included in Git.
 Existing learning scripts are preserved and some also require local PDFs or Ollama.

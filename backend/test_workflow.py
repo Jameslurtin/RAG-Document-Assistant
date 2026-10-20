@@ -1,4 +1,4 @@
-"""Run from the project root: python -m unittest backend.test_workflow -v.
+"""Run backend.test_embeddings, backend.test_workflow, and backend.test_agentic with unittest.
 
 Set RAG_LIVE_TESTS=1 to also test the existing PDFs with local llama3.2.
 """
@@ -52,9 +52,8 @@ class WorkflowTests(unittest.TestCase):
         self.clear_index()
 
     def clear_index(self):
-        if rag.collection is not None:
-            rag.client.delete_collection(rag.collection.name)
-            rag.collection = None
+        if rag.collection is not None and rag.collection.count():
+            rag.collection.delete(ids=rag.collection.get()["ids"])
 
     def tearDown(self):
         self.clear_index()
@@ -113,14 +112,17 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(first.status_code, 200, first.text)
         self.assertEqual(first.json()['filename'], 'same.pdf')
         self.assertEqual(first.json()['chunks_stored'], 1)
-        old_name = rag.collection.name
+        first_id = first.json()['document_id']
         second = self.upload(pdf_bytes('The second document uses SQLite.'), 'same.pdf')
         self.assertEqual(second.status_code, 200, second.text)
-        self.assertNotEqual(old_name, rag.collection.name)
-        self.assertEqual(rag.collection.count(), 1)
-        self.assertNotIn(old_name, [item.name for item in rag.client.list_collections()])
+        second_id = second.json()['document_id']
+        self.assertNotEqual(first_id, second_id)
+        self.assertEqual(rag.collection.count(), 2)
         with patch.object(llm.ollama, 'chat', return_value={'message': {'content': 'SQLite.'}}) as chat:
-            response = self.client.post('/ask', json={'question': ' What database is used? '})
+            response = self.client.post('/ask', json={
+                'question': ' What database is used? ',
+                'document_ids': [second_id],
+            })
             self.assertEqual(response.status_code, 200, response.text)
             source = response.json()['sources'][0]
             self.assertEqual(source['page'], 1)
@@ -130,14 +132,26 @@ class WorkflowTests(unittest.TestCase):
             prompt = chat.call_args.kwargs['messages'][1]['content']
             self.assertIn('SQLite', prompt)
             self.assertNotIn('PostgreSQL', prompt)
-        active_name = rag.collection.name
+        self.assertEqual(len(self.client.get('/documents').json()['documents']), 2)
         self.assertEqual(self.upload(pdf_bytes()).status_code, 422)
         with patch.object(rag, 'embed_texts', side_effect=RuntimeError('test failure')):
             self.assertEqual(self.upload(pdf_bytes('Replacement content.')).status_code, 500)
-        self.assertEqual(rag.collection.name, active_name)
+        self.assertEqual(rag.collection.count(), 2)
         self.assertEqual(len(list(Path(self.temp.name).glob('*.pdf'))), 2)
         with patch.object(llm.ollama, 'chat', side_effect=ConnectionError('offline')):
             self.assertEqual(self.client.post('/ask', json={'question': 'Database?'}).status_code, 503)
+
+    def test_delete_document_removes_its_chunks(self):
+        first = self.upload(pdf_bytes('First file has PostgreSQL.'), 'first.pdf').json()
+        second = self.upload(pdf_bytes('Second file has SQLite.'), 'second.pdf').json()
+        response = self.client.delete(f"/documents/{first['document_id']}")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [item['document_id'] for item in self.client.get('/documents').json()['documents']],
+            [second['document_id']],
+        )
+        self.assertEqual(rag.collection.count(), 1)
+        self.assertFalse((Path(self.temp.name) / f"{first['document_id']}.pdf").exists())
 
     def test_openai_missing_key_api_error(self):
         uploaded = self.upload(pdf_bytes('The database is SQLite.'))
@@ -147,6 +161,11 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400, response.text)
             self.assertEqual(response.json(), {'detail': 'OPENAI_API_KEY is required when LLM_PROVIDER=openai.'})
             factory.assert_not_called()
+
+    def test_unsupported_llm_provider(self):
+        with patch.dict(os.environ, {'LLM_PROVIDER': 'unsupported'}):
+            with self.assertRaisesRegex(ValueError, 'Unsupported LLM provider'):
+                llm.generate_answer('context', 'question')
 
     def test_provider_neutral_service_errors(self):
         request = main.httpx.Request('POST', 'https://api.openai.com/v1/responses')
@@ -194,12 +213,19 @@ class WorkflowTests(unittest.TestCase):
         response = self.upload(second.read_bytes(), second.name)
         self.assertEqual(response.status_code, 200, response.text)
         print('Second upload:', response.json(), flush=True)
-        answer = self.client.post('/ask', json={'question': 'What does SDLC stand for?'})
+        second_id = response.json()['document_id']
+        answer = self.client.post('/ask', json={
+            'question': 'What does SDLC stand for?',
+            'document_ids': [second_id],
+        })
         self.assertEqual(answer.status_code, 200, answer.text)
         self.assertIn('software development life cycle', answer.json()['answer'].lower())
         self.assertTrue(all(s['filename'] == second.name for s in answer.json()['sources']))
         print('Second document answer:', answer.json()['answer'], flush=True)
-        stale = self.client.post('/ask', json={'question': 'What database does FreelanceHub use?'})
+        stale = self.client.post('/ask', json={
+            'question': 'What database does FreelanceHub use?',
+            'document_ids': [second_id],
+        })
         self.assertEqual(stale.status_code, 200, stale.text)
         self.assertEqual(stale.json()['answer'], "I don't know based on the document.")
         self.assertTrue(all(s['filename'] == second.name for s in stale.json()['sources']))

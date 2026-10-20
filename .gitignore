@@ -14,6 +14,7 @@ dist/
 
 # Private local documents and uploads.
 backend/documents/
+backend/data/
 *.pdf
 *.PDF
 

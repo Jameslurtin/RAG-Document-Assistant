@@ -29,7 +29,7 @@ jobs:
           python -m compileall backend
 
       - name: Test backend
-        run: python -m unittest backend.test_embeddings backend.test_workflow -v
+        run: python -m unittest backend.test_embeddings backend.test_workflow backend.test_agentic -v
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

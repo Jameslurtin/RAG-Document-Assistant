@@ -5,8 +5,16 @@ services:
       dockerfile: backend/Dockerfile
     env_file:
       - backend/.env
+    environment:
+      DATA_DIR: /app/backend/data
+      EMBEDDING_PROVIDER: ${DOCKER_EMBEDDING_PROVIDER:-gemini}
+      OLLAMA_HOST: http://host.docker.internal:11434
     ports:
       - "8001:8000"
+    volumes:
+      - rag-data:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
@@ -18,3 +26,6 @@ services:
       - "5173:80"
     depends_on:
       - backend
+
+volumes:
+  rag-data:

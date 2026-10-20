@@ -31,6 +31,18 @@ h2 { font-size: 19px; letter-spacing: -.5px; font-weight: 600; margin: 0 0 24px;
 .status-dot.ready { background: #629268; }
 .document-status strong { font-weight: 600; }
 .document-status p { color: #758171; margin: 5px 0 0; }
+.document-list { display: grid; gap: 10px; margin-top: 18px; }
+.document-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border: 1px solid #e5eade; border-radius: 8px; }
+.document-item label { display: flex; align-items: flex-start; gap: 9px; min-width: 0; font-size: 12px; }
+.document-item label > input { margin: 3px 0 0; accent-color: #254f40; flex-shrink: 0; }
+.document-item label span { display: grid; gap: 3px; overflow-wrap: anywhere; }
+.document-item small { color: #758171; }
+.delete-button, .secondary-button { padding: 7px 9px; background: #f3f6ee; color: #385344; border: 1px solid #e0e7d8; font-size: 11px; }
+.delete-button:hover, .secondary-button:hover { background: #e9efdf; }
+.question-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.question-heading h2 { margin-bottom: 18px; }
+.mode-picker { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; font-size: 12px; font-weight: 600; }
+.mode-picker select { padding: 7px 10px; border: 1px solid #dce3d6; border-radius: 7px; background: #fcfdfa; color: #233f37; }
 .helper { font-size: 12px; color: #758171; border-top: 1px solid #edf0e8; padding-top: 18px; margin: 22px 0 0; }
 form > label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
 textarea { width: 100%; padding: 14px; border: 1px solid #dce3d6; border-radius: 8px; resize: vertical; min-height: 115px; background: #fcfdfa; color: #233f37; font-size: 14px; }
@@ -49,6 +61,17 @@ button:disabled, .disabled { opacity: .6; cursor: wait; }
 .spinner { width: 15px; height: 15px; flex-shrink: 0; border: 2px solid #d8e2ce; border-top-color: #254f40; border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .answer { border-top: 1px solid #e7ecdf; margin-top: 28px; padding-top: 22px; }
+.chat-message { border-top: 1px solid #edf0e8; margin-top: 26px; padding-top: 20px; }
+.user-question { display: flex; gap: 10px; align-items: flex-start; color: #5f755f; font-size: 13px; }
+.user-question > span { font-weight: 700; white-space: nowrap; }
+.user-question p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-message .answer { border-top: 0; margin-top: 12px; padding-top: 0; }
+.agent-details { margin-top: 20px; background: #f8faf4; }
+.agent-details summary { font-weight: 600; }
+.agent-details ol { display: grid; gap: 10px; padding-left: 22px; margin-bottom: 0; }
+.agent-details li { padding-left: 3px; font-size: 12px; }
+.agent-details li span { display: block; color: #657469; }
+.agent-details li small { color: #8c9884; }
 h3 { font-size: 14px; font-weight: 650; margin: 0 0 12px; }
 .answer > p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.8; }
 .sources { margin-top: 28px; }
@@ -60,5 +83,5 @@ summary { cursor: pointer; font-size: 12px; overflow-wrap: anywhere; }
 .excerpt { white-space: pre-wrap; overflow-wrap: anywhere; color: #5c6e53; font-size: 12px; line-height: 1.7; border-top: 1px solid #e7ecdf; padding-top: 12px; }
 footer { display: flex; justify-content: space-between; gap: 20px; margin: 45px 0 25px; font-size: 11px; color: #8c9884; }
 @media (max-width: 850px) { .app-shell { padding: 0 24px; } .workspace { grid-template-columns: 1fr; } .upload-area { min-height: 150px; } .intro { padding-top: 38px; } }
-@media (max-width: 480px) { .app-shell { padding: 0 16px; } .panel { padding: 22px; } .brand { font-size: 10px; letter-spacing: .5px; } .local-badge { font-size: 10px; } .form-footer { align-items: stretch; flex-direction: column; } footer { flex-direction: column; gap: 5px; } }
+@media (max-width: 480px) { .app-shell { padding: 0 16px; } .panel { padding: 22px; } .brand { font-size: 10px; letter-spacing: .5px; } .local-badge { font-size: 10px; } .form-footer { align-items: stretch; flex-direction: column; } .question-heading { flex-direction: column; } footer { flex-direction: column; gap: 5px; } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

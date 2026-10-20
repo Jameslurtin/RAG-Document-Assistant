@@ -75,11 +75,21 @@ In another terminal, run FastAPI:
 The initial local embedding request downloads `all-MiniLM-L6-v2`. Open
 http://127.0.0.1:8000/docs for interactive API documentation.
 
-For Gemini generation, set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY` in
-`backend/.env`. For OpenAI, set `LLM_PROVIDER=openai` and `OPENAI_API_KEY`.
-Environment values are supplied when the process starts; embedding provider and
-model settings are cached at backend startup, so restart and reindex after
-changing them.
+FastAPI does not automatically load `backend/.env` during a local Python run.
+The copied file is a configuration template; defaults work with local Ollama.
+For hosted providers, set environment variables in the same PowerShell window
+before starting FastAPI, for example:
+
+```powershell
+$env:LLM_PROVIDER = "gemini"
+$env:GEMINI_API_KEY = "<your Gemini key>"
+$env:EMBEDDING_PROVIDER = "gemini"
+```
+
+For OpenAI, set `LLM_PROVIDER` to `openai` and provide `OPENAI_API_KEY`.
+Docker Compose loads `backend/.env` automatically. Embedding provider and model
+settings are cached at backend startup, so restart and reindex after changing
+them.
 
 ### Frontend
 

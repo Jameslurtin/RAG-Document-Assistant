@@ -13,9 +13,10 @@ There are two modes:
 
 - **Standard RAG:** always searches for relevant passages, then asks the model to
   answer from them.
-- **Agentic RAG:** first asks a planner which safe tool should run. The planner
-  can search, list document information, compare documents, or rewrite a query
-  once before answering.
+- **Agentic RAG:** usually asks a planner which safe tool should run. Questions
+  asking for document counts or filenames go directly to the metadata tool.
+  The planner can search, list document information, compare documents, or
+  rewrite a query once before answering.
 
 ## 2. What does RAG mean?
 

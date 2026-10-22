@@ -73,7 +73,10 @@ In another terminal, run FastAPI:
 ```
 
 The initial local embedding request downloads `all-MiniLM-L6-v2`. Open
-http://127.0.0.1:8000/docs for interactive API documentation.
+http://127.0.0.1:8000/docs for interactive API documentation. If running the
+frontend against this local backend, set `VITE_API_URL=http://127.0.0.1:8000`
+before starting Vite. The default frontend API URL is port `8001`, which is
+the backend's published Docker Compose port.
 
 FastAPI does not automatically load `backend/.env` during a local Python run.
 The copied file is a configuration template; defaults work with local Ollama.
@@ -101,8 +104,10 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. `VITE_API_URL` can override the API URL; it is
-compiled into the browser bundle and must not contain credentials.
+Open http://localhost:5173. `VITE_API_URL` can override the API URL; it is
+compiled into the browser bundle and must not contain credentials. Docker
+Compose passes this value as a frontend build argument, defaulting to
+`http://localhost:8001`; rebuild the frontend image after changing it.
 
 ### Environment variables
 
@@ -120,6 +125,7 @@ Copy `backend/.env.example` to `backend/.env` and adjust as needed:
 | `DATA_DIR` | Persistent PDFs and Chroma storage | `backend/data` |
 | `MAX_UPLOAD_BYTES` | Per-file maximum upload size | `26214400` (25 MiB) |
 | `FRONTEND_ORIGIN` | Optional additional allowed CORS origin | Empty |
+| `VITE_API_URL` | Frontend API base URL (Vite build-time setting, no credentials) | `http://localhost:8001` |
 
 Never commit `.env` files or place credentials in `VITE_*` variables. In Gemini
 embedding mode, PDF text and questions are sent to the Gemini API. Changing the
@@ -149,6 +155,7 @@ connecting the backend container to Ollama on the host. For a clean reset,
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
+| `GET` | `/health` | Backend health check used by the frontend connection indicator. |
 | `POST` | `/upload` | Upload one PDF as `file`, or multiple PDFs as repeated `files` fields. |
 | `GET` | `/documents` | List document IDs, names, page counts, chunk counts, and index times. |
 | `DELETE` | `/documents/{document_id}` | Delete a PDF and all its vector records. |
@@ -180,8 +187,10 @@ document.`
 
 ## Screenshots
 
-No screenshots are committed yet. Add UI screenshots here when capturing a
-portfolio/demo session.
+![Agentic RAG workspace showing the document library, comparison answer, citations, and tool activity](./docs/screenshots/agentic-rag-dashboard.png)
+
+The screenshot uses sample document names and mocked example content; it does
+not contain uploaded user documents or API credentials.
 
 ## Tests and builds
 

@@ -114,6 +114,11 @@ def home():
     return {"message": "RAG Document Assistant API is running"}
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/documents")
 def get_documents():
     return {"documents": list_documents()}

@@ -64,6 +64,13 @@ class WorkflowTests(unittest.TestCase):
         return self.client.post('/upload', files={'file': (filename, content, 'application/pdf')})
 
     def test_validation_and_cors(self):
+        health = self.client.get('/health', headers={'Origin': 'http://localhost:5173'})
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.json(), {'status': 'ok'})
+        self.assertEqual(
+            health.headers['access-control-allow-origin'],
+            'http://localhost:5173',
+        )
         self.assertEqual(self.client.post('/ask', json={'question': 'hello'}).status_code, 400)
         for question in ['', '   ', '\n\t']:
             self.assertEqual(self.client.post('/ask', json={'question': question}).status_code, 422)
@@ -199,20 +206,16 @@ class WorkflowTests(unittest.TestCase):
         second = next(documents.glob('Software*.pdf'))
         response = self.upload(first.read_bytes(), first.name)
         self.assertEqual(response.status_code, 200, response.text)
-        print('First upload:', response.json(), flush=True)
         answer = self.client.post('/ask', json={'question': 'What database does FreelanceHub use?'})
         self.assertEqual(answer.status_code, 200, answer.text)
         self.assertIn('postgresql', answer.json()['answer'].lower())
         self.assertEqual(len(answer.json()['sources']), 4)
         self.assertTrue(all(s['filename'] == first.name and s['page'] >= 1 for s in answer.json()['sources']))
-        print('Known answer:', answer.json()['answer'], flush=True)
         unknown = self.client.post('/ask', json={'question': 'What is the exact population of Neptune?'})
         self.assertEqual(unknown.status_code, 200, unknown.text)
         self.assertEqual(unknown.json()['answer'], "I don't know based on the document.")
-        print('Unknown answer:', unknown.json()['answer'], flush=True)
         response = self.upload(second.read_bytes(), second.name)
         self.assertEqual(response.status_code, 200, response.text)
-        print('Second upload:', response.json(), flush=True)
         second_id = response.json()['document_id']
         answer = self.client.post('/ask', json={
             'question': 'What does SDLC stand for?',
@@ -221,7 +224,6 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(answer.status_code, 200, answer.text)
         self.assertIn('software development life cycle', answer.json()['answer'].lower())
         self.assertTrue(all(s['filename'] == second.name for s in answer.json()['sources']))
-        print('Second document answer:', answer.json()['answer'], flush=True)
         stale = self.client.post('/ask', json={
             'question': 'What database does FreelanceHub use?',
             'document_ids': [second_id],
@@ -229,7 +231,6 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(stale.status_code, 200, stale.text)
         self.assertEqual(stale.json()['answer'], "I don't know based on the document.")
         self.assertTrue(all(s['filename'] == second.name for s in stale.json()['sources']))
-        print('Old document question:', stale.json()['answer'], flush=True)
 
 
 if __name__ == '__main__':

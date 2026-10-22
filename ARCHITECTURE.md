@@ -15,6 +15,9 @@ documents, rewrite a query, or finish. The backend executes the selected tool
 and gives the planner a short execution summary before the next step. It never
 lets the model execute arbitrary code or construct arbitrary database queries.
 An iteration limit and a one-rewrite limit bound cost and prevent loops.
+Document inventory questions are recognized before planning and sent directly
+to `get_document_info`, so counts and filenames come from index metadata
+instead of semantic chunk retrieval.
 
 The current implementation uses JSON text planning, not native function calling
 or LangGraph. That keeps Ollama, Gemini, and OpenAI behind the same small
@@ -90,9 +93,9 @@ The frontend creates a random session UUID stored in the browser's
 `sessionStorage`. It submits that ID with each question. A bounded in-memory
 backend store keeps up to eight turns per session, truncates stored text, and
 caps the number of sessions. A different session ID cannot access another
-session's history. Only prior user questions are used to enrich retrieval;
-assistant responses are labelled unverified conversation context and never
-count as retrieved evidence.
+session's history. Prior user questions and assistant responses can help resolve
+follow-up references; assistant responses are labelled unverified context and
+never count as retrieved evidence.
 
 Memory is intentionally simple: it is process-local and lost on restart. This
 portfolio MVP should run one backend worker; production multi-worker deployments

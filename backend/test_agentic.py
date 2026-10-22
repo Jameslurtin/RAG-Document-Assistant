@@ -161,6 +161,66 @@ class AgenticWorkflowTests(unittest.TestCase):
         self.assertEqual(result["agent"]["iterations"], agent.MAX_ITERATIONS)
         self.assertEqual(result["answer"], llm.UNKNOWN_ANSWER)
 
+    def test_document_inventory_uses_metadata_tool_without_semantic_search(self):
+        first = self.upload("One document discusses SQLite.", "document1.pdf")
+        second = self.upload("Another document discusses PostgreSQL.", "document2.pdf")
+        questions = (
+            "How many documents have I uploaded, and what are their filenames?",
+            "How many documents are indexed?",
+            "What files have I uploaded?",
+            "List uploaded PDFs.",
+        )
+
+        with patch.object(agent, "generate_agent_action") as planner, patch.object(
+            rag, "search_documents"
+        ) as search:
+            responses = [
+                self.client.post("/agent/ask", json={"question": question})
+                for question in questions
+            ]
+
+        for response in responses:
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["agent"]["tools"][0]["tool"], "get_document_info")
+            self.assertEqual(response.json()["sources"], [])
+        result = responses[0].json()
+        self.assertEqual(
+            result["answer"],
+            "You have uploaded 2 documents: document1.pdf, document2.pdf.",
+        )
+        self.assertEqual(
+            [tool["tool"] for tool in result["agent"]["tools"]],
+            ["get_document_info"],
+        )
+        planner.assert_not_called()
+        search.assert_not_called()
+
+        self.client.delete(f"/documents/{first['document_id']}")
+        inventory = rag.get_document_info()
+        self.assertEqual(inventory["count"], 1)
+        self.assertEqual(
+            [document["filename"] for document in inventory["documents"]],
+            ["document2.pdf"],
+        )
+        with patch.object(agent, "generate_agent_action") as planner, patch.object(
+            rag, "search_documents"
+        ) as search:
+            response = self.client.post("/agent/ask", json={"question": questions[0]})
+        self.assertEqual(
+            response.json()["answer"],
+            "You have uploaded 1 document: document2.pdf.",
+        )
+        planner.assert_not_called()
+        search.assert_not_called()
+
+        self.client.delete(f"/documents/{second['document_id']}")
+        self.assertEqual(rag.get_document_info(), {"count": 0, "documents": []})
+        empty = self.client.post("/agent/ask", json={"question": questions[0]})
+        self.assertEqual(empty.status_code, 200, empty.text)
+        self.assertEqual(empty.json()["answer"], "You have uploaded 0 documents.")
+        self.assertEqual(empty.json()["sources"], [])
+        self.assertEqual(empty.json()["agent"]["tools"][0]["tool"], "get_document_info")
+
     def test_comparison_requires_evidence_in_two_documents(self):
         first = self.upload("Document one describes SQLite.", "one.pdf")
         second = self.upload("Document two describes PostgreSQL.", "two.pdf")
@@ -199,10 +259,10 @@ class AgenticWorkflowTests(unittest.TestCase):
     def test_empty_index_invalid_pdf_and_safe_prompt_injection_handling(self):
         self.assertEqual(self.client.get("/documents").json()["documents"], [])
         empty_answer = self.client.post("/agent/ask", json={
-            "question": "What files are uploaded?"
+            "question": "How many documents have I uploaded?"
         })
         self.assertEqual(empty_answer.status_code, 200)
-        self.assertIn("No documents", empty_answer.json()["answer"])
+        self.assertEqual(empty_answer.json()["answer"], "You have uploaded 0 documents.")
         invalid = self.client.post(
             "/upload",
             files={"file": ("bad.pdf", b"%PDF-broken", "application/pdf")},

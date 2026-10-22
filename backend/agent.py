@@ -1,4 +1,5 @@
 import logging
+import re
 from time import perf_counter
 
 from backend import rag
@@ -11,14 +12,47 @@ MAX_REWRITES = 1
 
 
 def _document_answer(documents: list[dict]) -> str:
-    if not documents:
-        return "No documents have been uploaded yet."
-    lines = [f"{len(documents)} document(s) are available:"]
-    lines.extend(
-        f"- {item['filename']} ({item['page_count']} pages)"
-        for item in documents
+    count = len(documents)
+    if count == 0:
+        return "You have uploaded 0 documents."
+    filenames = ", ".join(item["filename"] for item in documents)
+    noun = "document" if count == 1 else "documents"
+    return f"You have uploaded {count} {noun}: {filenames}."
+
+
+def _is_document_inventory_question(question: str) -> bool:
+    normalized = re.sub(r"\s+", " ", question.lower()).strip()
+    asks_for_count = any(
+        phrase in normalized
+        for phrase in ("how many", "number of", "count of", "total count", "total number")
     )
-    return "\n".join(lines)
+    asks_for_names = any(
+        phrase in normalized
+        for phrase in (
+            "filename",
+            "file name",
+            "document name",
+            "names of",
+            "what are their names",
+            "list",
+            "which documents",
+            "which files",
+            "what documents",
+            "what files",
+        )
+    )
+    asks_about_uploads = any(
+        phrase in normalized
+        for phrase in ("uploaded", "upload", "have i got", "do i have")
+    )
+    about_documents = any(
+        phrase in normalized for phrase in ("document", "file", "pdf")
+    )
+    return about_documents and (
+        asks_for_count
+        or asks_for_names
+        or (asks_about_uploads and any(word in normalized for word in ("what", "which", "list", "show")))
+    )
 
 
 def ask_agent(
@@ -47,6 +81,21 @@ def ask_agent(
         for word in ("compare", "comparison", "contrast", "similar", "difference", "different", "versus", " vs ")
     )
     comparison_supported = False
+
+    if _is_document_inventory_question(question):
+        info = rag.get_document_info()
+        documents = info["documents"]
+        summary = f"Found {info['count']} indexed document(s)."
+        logger.info("Agent tool executed", extra={"tool": "get_document_info"})
+        return {
+            "answer": _document_answer(documents),
+            "sources": [],
+            "agent": {
+                "tools": [{"tool": "get_document_info", "summary": summary}],
+                "iterations": 1,
+                "max_iterations": MAX_ITERATIONS,
+            },
+        }
 
     if not selected_documents:
         has_documents = bool(all_documents)
